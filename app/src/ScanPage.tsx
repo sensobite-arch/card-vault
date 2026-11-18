@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cardImage } from './api'
-import { scanCard, warmUpScanner, type ScanResult } from './scanner'
+import { findCardBox, scanCard, warmUpScanner, type ScanResult } from './scanner'
 
 type Box = { x: number; y: number; w: number; h: number }
-type Stage = { kind: 'camera' } | { kind: 'working'; preview: string; status: string } | { kind: 'done'; preview: string; result: ScanResult } | { kind: 'error'; preview?: string; message: string }
+type Stage = { kind: 'start' } | { kind: 'camera' } | { kind: 'working'; preview: string; status: string } | { kind: 'done'; preview: string; result: ScanResult } | { kind: 'error'; preview?: string; message: string }
 
 const CARD_RATIO = 63 / 88 // width / height of a Pokémon card
 const MARGIN = 0.15 // extra space around the frame, in case the card isn't lined up exactly
@@ -18,6 +18,16 @@ async function takePhoto(track: MediaStreamTrack): Promise<ImageBitmap | null> {
   } catch {
     return null
   }
+}
+
+function resize(src: HTMLCanvasElement, scale: number): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = Math.round(src.width * scale)
+  c.height = Math.round(src.height * scale)
+  const ctx = c.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(src, 0, 0, c.width, c.height)
+  return c
 }
 
 function cropTo(src: HTMLCanvasElement, box: Box, margin: number): HTMLCanvasElement {
@@ -39,7 +49,7 @@ export default function ScanPage({ onPick, onSearchByHand }: { onPick: (cardId: 
   const photoRef = useRef<Blob | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
-  const [stage, setStage] = useState<Stage>({ kind: 'camera' })
+  const [stage, setStage] = useState<Stage>({ kind: 'start' })
 
   useEffect(() => warmUpScanner(), [])
 
@@ -163,15 +173,29 @@ export default function ScanPage({ onPick, onSearchByHand }: { onPick: (cardId: 
   async function fromFile(file: File | undefined) {
     if (!file) return
     try {
-      const bmp = await createImageBitmap(file)
-      const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height))
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.round(bmp.width * scale)
-      canvas.height = Math.round(bmp.height * scale)
-      canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-      bmp.close()
+      setStage({ kind: 'working', preview: '', status: 'Opening photo…' })
       stopCamera()
-      run(canvas, null)
+      const bmp = await createImageBitmap(file)
+      // Work on a large copy (phone photos are huge), then cut out just the card.
+      const scale = Math.min(1, 3200 / Math.max(bmp.width, bmp.height))
+      const full = document.createElement('canvas')
+      full.width = Math.round(bmp.width * scale)
+      full.height = Math.round(bmp.height * scale)
+      full.getContext('2d')!.drawImage(bmp, 0, 0, full.width, full.height)
+      bmp.close()
+      const box = findCardBox(full)
+      if (!box) {
+        const small = Math.min(1, 2000 / Math.max(full.width, full.height))
+        run(small < 1 ? resize(full, small) : full, null)
+        return
+      }
+      const crop = cropTo(full, box, 0.12)
+      const out = Math.min(1, 2200 / crop.height)
+      const canvas = out < 1 ? resize(crop, out) : crop
+      // Where the card sits inside the cut-out.
+      const cx = Math.max(0, box.x - box.w * 0.12)
+      const cy = Math.max(0, box.y - box.h * 0.12)
+      run(canvas, { x: (box.x - cx) * out, y: (box.y - cy) * out, w: box.w * out, h: box.h * out })
     } catch {
       setStage({ kind: 'error', message: 'Could not open that photo. Try another one.' })
     }
@@ -179,15 +203,46 @@ export default function ScanPage({ onPick, onSearchByHand }: { onPick: (cardId: 
 
   const again = () => {
     photoRef.current = null
-    setStage({ kind: 'camera' })
+    setStage({ kind: 'start' })
   }
 
-  const fileButton = (label: string, className = 'btn secondary') => (
+  // useCamera: open the phone's own camera app (much sharper than a camera inside the browser).
+  const fileButton = (label: string, className = 'btn secondary', useCamera = false) => (
     <label className={className}>
       {label}
-      <input type="file" accept="image/*" hidden onChange={(e) => fromFile(e.target.files?.[0])} />
+      <input
+        type="file"
+        accept="image/*"
+        capture={useCamera ? 'environment' : undefined}
+        hidden
+        onChange={(e) => {
+          fromFile(e.target.files?.[0])
+          e.target.value = ''
+        }}
+      />
     </label>
   )
+
+  if (stage.kind === 'start') {
+    return (
+      <div className="scan-start">
+        <div className="scan-hero" aria-hidden>📷</div>
+        <h2>Scan a card</h2>
+        <p className="hint">Your phone's camera opens. Take a photo of one card, then confirm it.</p>
+        {fileButton('📷 Take photo', 'btn primary big', true)}
+        {fileButton('🖼️ Choose from gallery', 'btn secondary big')}
+        <ul className="tips">
+          <li>Lay the card flat on a <b>plain, dark</b> surface</li>
+          <li>Let the card fill <b>most of the photo</b>, straight from above</li>
+          <li>Good light, <b>no glare</b> on the card</li>
+        </ul>
+        <div className="scan-links">
+          <button className="link" onClick={() => setStage({ kind: 'camera' })}>Use live camera</button>
+          <button className="link" onClick={onSearchByHand}>Type the name instead</button>
+        </div>
+      </div>
+    )
+  }
 
   if (stage.kind === 'camera') {
     return (
@@ -202,7 +257,7 @@ export default function ScanPage({ onPick, onSearchByHand }: { onPick: (cardId: 
           {cameraError && <p className="camera-error">{cameraError}</p>}
         </div>
         <div className="scan-actions">
-          {fileButton('🖼️ Choose photo')}
+          <button className="btn ghost" onClick={again}>Back</button>
           <button className="shutter" onClick={capture} disabled={!cameraReady} aria-label="Take picture" />
           <button className="btn ghost" onClick={onSearchByHand}>Type instead</button>
         </div>
@@ -259,8 +314,8 @@ export default function ScanPage({ onPick, onSearchByHand }: { onPick: (cardId: 
           )}
 
           <div className="scan-bottom">
-            <button className="btn primary" onClick={again}>📷 Scan another</button>
-            {fileButton('🖼️ Other photo')}
+            {fileButton('📷 Scan another', 'btn primary', true)}
+            {fileButton('🖼️ From gallery')}
             <button className="btn ghost" onClick={onSearchByHand}>Search by hand</button>
           </div>
         </>
