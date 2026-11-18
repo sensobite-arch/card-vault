@@ -446,3 +446,14 @@
 .advice-prices .field a { font-weight: 500; }
 .grade-badge { color: #7dd88a; font-weight: 600; }
 .filter-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #1c2a21; border: 1px solid #2f6f3e; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.9rem; }
+
+/* ---------- Backup ---------- */
+.backup { display: grid; gap: 12px; }
+.backup h3 { margin-bottom: 2px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.check-row input { width: 18px; height: 18px; accent-color: var(--accent); }
+.restore-box { display: grid; gap: 8px; background: var(--surface); border-radius: 12px; padding: 12px; }
+.ok-msg { background: #1c2a21; color: #9fe6aa; padding: 10px 14px; border-radius: 10px; margin: 0; }
+.divider { border: none; border-top: 1px solid var(--surface-2); margin: 8px 0; width: 100%; }
+.backup-banner { background: #2a2617; border-color: #6b5a1a; }

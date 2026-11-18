@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { DEFAULT_SETTINGS, saveSettings, useGradingSettings, type GradingSettings } from './grading'
 import Sheet from './Sheet'
+import BackupSection from './BackupSection'
 
 const FIELDS: { key: keyof GradingSettings; label: string; help?: string; unit: '€' | '%' | 'cards' }[] = [
   { key: 'fee', label: 'Grading fee per card', help: 'Cheapest service level (e.g. PSA Value).', unit: '€' },
@@ -19,8 +20,10 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [draft, setDraft] = useState<GradingSettings>(current)
 
   return (
-    <Sheet onClose={onClose} title="Settings">
+    <Sheet onClose={onClose} title="Settings & backup">
       <div className="form">
+        <BackupSection />
+        <hr className="divider" />
         <div>
           <h3>Grading costs</h3>
           <p className="small">Used for the "Worth grading" advice. Fees differ per grading company and change over time, so check their website and adjust these.</p>
@@ -48,9 +51,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
             saveSettings(draft)
             onClose()
           }}
-        >
-          Save
-        </button>
+        >Save grading costs</button>
         <button className="btn ghost" onClick={() => setDraft(DEFAULT_SETTINGS)}>Reset to defaults</button>
       </div>
     </Sheet>

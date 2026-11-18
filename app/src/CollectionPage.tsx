@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { cardImage, formatEur } from './api'
 import { gradeRange } from './condition'
 import { adviseGrading, useGradingSettings } from './grading'
+import { lastBackup } from './backup'
 import {
   conditionInfo,
   getPhoto,
@@ -14,7 +15,7 @@ import {
 
 type Sort = 'value' | 'recent' | 'name'
 
-export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: string) => void; onGoSearch: () => void }) {
+export default function CollectionPage({ onEdit, onGoSearch, onOpenSettings }: { onEdit: (id: string) => void; onGoSearch: () => void; onOpenSettings: () => void }) {
   const items = useCollection()
   const [sort, setSort] = useState<Sort>('value')
   const [filter, setFilter] = useState('')
@@ -88,6 +89,13 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
         {message && <span className="small">{message}</span>}
       </section>
 
+      {needsBackup(items.length) && (
+        <div className="filter-banner backup-banner">
+          <span>💾 {lastBackup() ? 'Your last backup is over a month old.' : 'You have no backup yet.'} Your cards only live on this phone.</span>
+          <button className="btn secondary" onClick={onOpenSettings}>Back up</button>
+        </div>
+      )}
+
       {(worthCount > 0 || onlyWorth) && (
         <div className="filter-banner">
           <span>🏅 {onlyWorth ? `Showing ${worthCount} card${worthCount === 1 ? '' : 's'} worth grading, biggest gain first` : `${worthCount} card${worthCount === 1 ? ' is' : 's are'} worth grading`}</span>
@@ -146,4 +154,11 @@ function Thumb({ item }: { item: CollectionItem }) {
   }, [item.id, item.hasPhoto])
   const src = url ?? cardImage(item.image)
   return src ? <img className="thumb" src={src} alt="" loading="lazy" /> : <span className="thumb noimg" />
+}
+
+/** Remind about a backup once there are a few cards and the last one is old (or missing). */
+function needsBackup(count: number) {
+  if (count < 5) return false
+  const last = lastBackup()
+  return !last || Date.now() - last.getTime() > 30 * 24 * 3600 * 1000
 }

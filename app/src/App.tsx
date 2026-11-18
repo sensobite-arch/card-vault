@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import type { CardDetail } from './api'
 import CardDetailView from './CardDetailView'
 import CollectionPage from './CollectionPage'
-import { getItem, useCollection } from './collection'
+import { getItem, protectStorage, useCollection } from './collection'
 import ItemForm from './ItemForm'
 import ScanPage from './ScanPage'
 import SearchPage from './SearchPage'
@@ -19,7 +19,12 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [scanPhoto, setScanPhoto] = useState<Blob | null>(null) // photo from the scanner, used when adding
-  useCollection() // re-render when the collection changes
+  const collection = useCollection() // re-render when the collection changes
+  const hasCards = collection.length > 0
+  // Once you have cards, ask the browser to never clear the app's storage by itself.
+  useEffect(() => {
+    if (hasCards) protectStorage()
+  }, [hasCards])
   const editItem = editId ? getItem(editId) : undefined
 
   function showToast(text: string) {
@@ -46,7 +51,7 @@ export default function App() {
             onSearchByHand={() => setTab('search')}
           />
         )}
-        {tab === 'collection' && <CollectionPage onEdit={setEditId} onGoSearch={() => setTab('search')} />}
+        {tab === 'collection' && <CollectionPage onEdit={setEditId} onGoSearch={() => setTab('search')} onOpenSettings={() => setSettingsOpen(true)} />}
       </main>
 
       <nav className="tabbar">

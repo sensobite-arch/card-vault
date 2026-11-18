@@ -137,6 +137,44 @@ export async function setBackPhoto(id: string, blob: Blob | null) {
   else await del(`photoBack:${id}`, db)
 }
 
+/** Current list of saved cards (not reactive; for backups). */
+export const allItems = () => items
+
+/**
+ * Adds cards from a backup. 'merge' keeps your current cards and adds the ones
+ * you don't have yet; 'replace' throws away the current collection first.
+ */
+export async function importItems(
+  list: CollectionItem[],
+  photos: Record<string, Blob>,
+  backPhotos: Record<string, Blob>,
+  mode: 'merge' | 'replace',
+): Promise<{ added: number; skipped: number }> {
+  if (mode === 'replace') {
+    await Promise.all(items.flatMap((it) => [del(`photo:${it.id}`, db), del(`photoBack:${it.id}`, db)]))
+    items = []
+  }
+  const have = new Set(items.map((i) => i.id))
+  const fresh = list.filter((i) => !have.has(i.id))
+  for (const it of fresh) {
+    if (photos[it.id]) await set(`photo:${it.id}`, photos[it.id], db)
+    if (backPhotos[it.id]) await set(`photoBack:${it.id}`, backPhotos[it.id], db)
+  }
+  items = [...fresh, ...items]
+  emit()
+  await persist()
+  return { added: fresh.length, skipped: list.length - fresh.length }
+}
+
+/** Asks the browser not to clear the app's storage when space runs low. */
+export async function protectStorage() {
+  try {
+    if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist()
+  } catch {
+    /* not supported */
+  }
+}
+
 export const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
