@@ -3,6 +3,7 @@
 
 import { createWorker, PSM, type Worker } from 'tesseract.js'
 import { getSets, type CardBrief } from './api'
+import { getCatalog } from './catalog'
 
 // ---------- Text recognition ----------
 
@@ -239,32 +240,45 @@ async function candidateSignature(image: string): Promise<Float32Array | null> {
 
 const BASE = 'https://api.tcgdex.net/v2/en'
 
+/** Cards with this number in a set of this size (from the saved card list, or online). */
 async function cardsWithNumber(number: number, total: number): Promise<CardBrief[]> {
-  const sets = [...(await getSets()).values()].filter((s) => s.official === total)
-  const found = await Promise.all(
-    sets.map(async (s) => {
-      const res = await fetch(`${BASE}/sets/${s.id}/${number}`).catch(() => null)
-      if (!res?.ok) return null
-      const c = (await res.json()) as { id: string; localId: string; name: string; image?: string }
-      return { id: c.id, localId: c.localId, name: c.name, image: c.image, set: s } satisfies CardBrief
-    }),
-  )
-  return found.filter((c): c is NonNullable<typeof c> => c !== null)
+  try {
+    const all = await getCatalog()
+    return all.filter((c) => c.set?.official === total && parseInt(c.localId, 10) === number)
+  } catch {
+    const sets = [...(await getSets()).values()].filter((s) => s.official === total)
+    const found = await Promise.all(
+      sets.map(async (s) => {
+        const res = await fetch(`${BASE}/sets/${s.id}/${number}`).catch(() => null)
+        if (!res?.ok) return null
+        const c = (await res.json()) as { id: string; localId: string; name: string; image?: string }
+        return { id: c.id, localId: c.localId, name: c.name, image: c.image, set: s } satisfies CardBrief
+      }),
+    )
+    return found.filter((c): c is NonNullable<typeof c> => c !== null)
+  }
 }
 
+/** Cards whose name is close to the words that were read, even when misspelled ("MNakazam" → Alakazam). */
 async function cardsWithName(words: string[], number?: number): Promise<CardBrief[]> {
-  const sets = await getSets()
-  const tryWords = words.slice(0, 4) // most likely name words come first
-  const lists = await Promise.all(
-    tryWords.map(async (w) => {
-      const res = await fetch(`${BASE}/cards?name=${encodeURIComponent(w)}&pagination:itemsPerPage=200`).catch(() => null)
-      if (!res?.ok) return []
-      const list = (await res.json()) as { id: string; localId: string; name: string; image?: string }[]
-      return list.map((c) => ({ ...c, set: sets.get(c.id.slice(0, c.id.length - c.localId.length - 1)) }))
-    }),
-  )
-  const seen = new Set<string>()
-  let cards = lists.flat().filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+  if (!words.length) return []
+  let all: CardBrief[]
+  try {
+    all = await getCatalog()
+  } catch {
+    return []
+  }
+  const byName = new Map<string, CardBrief[]>()
+  for (const c of all) {
+    const list = byName.get(c.name)
+    if (list) list.push(c)
+    else byName.set(c.name, [c])
+  }
+  const scored = [...byName.keys()].map((name) => ({ name, score: nameScore(words, name) }))
+  const best = Math.max(0, ...scored.map((s) => s.score))
+  if (best < 0.6) return []
+  const names = scored.filter((s) => s.score >= Math.max(0.6, best - 0.08)).sort((a, b) => b.score - a.score).slice(0, 15)
+  let cards = names.flatMap((n) => byName.get(n.name)!)
   if (number !== undefined) {
     const sameNumber = cards.filter((c) => parseInt(c.localId, 10) === number)
     if (sameNumber.length) cards = sameNumber
@@ -277,15 +291,16 @@ export interface ScanResult {
   words: string[]
   candidates: (CardBrief & { score: number })[]
   confident: boolean // true when the first candidate is a clear winner
+  box: Box | null // where the card is in the photo
 }
 
-export async function identify(words: string[], number: ScanResult['number'], scanSig?: Float32Array | null): Promise<ScanResult> {
+export async function identify(words: string[], number: ScanResult['number'], scanSig?: Float32Array | null): Promise<Omit<ScanResult, 'box'>> {
   let candidates: CardBrief[] = []
   if (number) candidates = await cardsWithNumber(number.number, number.total)
 
   // Number found but the name doesn't fit any of those cards? Then also search by name.
   const fits = candidates.some((c) => nameScore(words, c.name) >= 0.7)
-  if ((!candidates.length || (!fits && words.length)) && words.length) {
+  if (!candidates.length || !fits) {
     const byName = await cardsWithName(words, number?.number)
     const ids = new Set(candidates.map((c) => c.id))
     candidates = [...candidates, ...byName.filter((c) => !ids.has(c.id))]
@@ -307,22 +322,34 @@ export async function identify(words: string[], number: ScanResult['number'], sc
     scored.sort((a, b) => b.score - a.score || (a.set?.order ?? 9999) - (b.set?.order ?? 9999))
   }
 
+  // Reprints with the same artwork score almost the same: then show the oldest print first.
+  if (scored.length > 1) {
+    const top = scored[0]
+    const twins = scored.filter((c) => c.name === top.name && top.score - c.score < 0.2)
+    if (twins.length > 1) {
+      twins.sort((a, b) => (a.set?.order ?? 9999) - (b.set?.order ?? 9999))
+      const ids = new Set(twins.map((c) => c.id))
+      scored = [...twins.map((c) => ({ ...c, score: top.score })), ...scored.filter((c) => !ids.has(c.id))]
+    }
+  }
+
   const [first, second] = scored
   const confident = !!first && first.score >= 1.5 && (!second || first.score - second.score >= 0.15)
   return { number, words, candidates: scored.slice(0, 24), confident }
 }
 
 /**
- * Reads a card. `cardBox` says where the card is in the image (when it was
- * lined up with the guide); without it the app looks for the card itself.
+ * Reads a card. `guideBox` is where the card should be if it was lined up with
+ * the frame; the app first tries to find the card's actual border itself.
  */
-export async function scanCard(image: HTMLCanvasElement, cardBox: Box | null, onStatus: (s: string) => void): Promise<ScanResult> {
+export async function scanCard(image: HTMLCanvasElement, guideBox: Box | null, onStatus: (s: string) => void): Promise<ScanResult> {
   statusListener = onStatus
+  getCatalog().catch(() => {}) // start loading the card list in parallel
   try {
     onStatus('Reading card…')
     let words: string[] = []
     let number: ScanResult['number'] = null
-    const box = cardBox ?? findCardBox(image)
+    const box = findCardBox(image) ?? guideBox
 
     if (box) {
       const { x, y, w, h } = box
@@ -332,17 +359,22 @@ export async function scanCard(image: HTMLCanvasElement, cardBox: Box | null, on
       if (!number) number = findNumber(await read(strip(image, x, y + h * 0.92, w, h * 0.08, 280, 'grayscale(1) contrast(2)'), PSM.SPARSE_TEXT))
     }
 
-    if (!box || !words.length) {
-      // Fall back to reading everything on the picture.
+    const sig = box ? artSignature(image, box) : null
+    onStatus('Finding the card…')
+    let result = box && words.length ? await identify(words, number, sig) : null
+
+    if (!result?.confident) {
+      // Not sure yet: read everything on the picture and try again with all the words.
       onStatus('Looking more closely…')
       const scale = Math.max(1, 1800 / Math.max(image.width, image.height))
       const text = await read(strip(image, 0, 0, image.width, image.height, image.height * scale), PSM.SPARSE_TEXT)
-      number ??= findNumber(text)
-      if (!words.length) words = nameWords(text).slice(0, 12)
+      const allWords = [...new Set([...words, ...nameWords(text).slice(0, 12)])]
+      const second = await identify(allWords, number ?? findNumber(text), sig)
+      if (!result || (second.candidates.length && (second.confident || !result.candidates.length || second.candidates[0].score > result.candidates[0].score)))
+        result = second
     }
 
-    onStatus('Finding the card…')
-    return await identify(words, number, box ? artSignature(image, box) : null)
+    return { ...result, box }
   } finally {
     statusListener = null
   }
