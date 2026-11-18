@@ -21,6 +21,7 @@ import {
 } from './collection'
 import Sheet from './Sheet'
 import ConditionCheck from './ConditionCheck'
+import GradingAdvice from './GradingAdvice'
 import { gradeRange, ratioText, type Grading } from './condition'
 
 type Props =
@@ -43,6 +44,7 @@ export default function ItemForm(props: Props) {
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [grading, setGrading] = useState<Grading | undefined>(existing?.grading)
+  const [gradedPrices, setGradedPrices] = useState<CollectionItem['gradedPrices']>(existing?.gradedPrices)
   const [backPhoto, setBackPhotoState] = useState<Blob | null | undefined>(undefined) // undefined = unchanged
   const [checking, setChecking] = useState<{ front: Blob | null; back: Blob | null } | null>(null)
   const photoBlobRef = useRef<Blob | null>(null) // the photo currently shown
@@ -120,6 +122,7 @@ export default function ItemForm(props: Props) {
         hasPhoto: existing?.hasPhoto ?? false,
         hasBackPhoto: backPhoto !== undefined ? !!backPhoto : existing?.hasBackPhoto,
         grading,
+        gradedPrices,
         addedAt: existing?.addedAt ?? new Date().toISOString(),
         basePrice,
         priceUpdated: card ? new Date().toISOString() : existing?.priceUpdated,
@@ -238,6 +241,29 @@ export default function ItemForm(props: Props) {
             </span>
           )}
         </div>
+
+        <GradingAdvice
+          item={{
+            id: existing?.id ?? 'draft',
+            cardId: card?.id ?? existing?.cardId ?? '',
+            name,
+            setName,
+            number,
+            image,
+            versionKey: version?.key ?? '',
+            versionLabel: version?.label ?? '',
+            condition,
+            language,
+            quantity,
+            notes,
+            hasPhoto: false,
+            addedAt: existing?.addedAt ?? '',
+            basePrice,
+            grading,
+            gradedPrices,
+          }}
+          onPrices={setGradedPrices}
+        />
 
         {error && <p className="error">{error}</p>}
 

@@ -7,6 +7,7 @@ import { getItem, useCollection } from './collection'
 import ItemForm from './ItemForm'
 import ScanPage from './ScanPage'
 import SearchPage from './SearchPage'
+import SettingsSheet from './SettingsSheet'
 
 type Tab = 'search' | 'scan' | 'collection'
 
@@ -16,6 +17,7 @@ export default function App() {
   const [addCard, setAddCard] = useState<CardDetail | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [scanPhoto, setScanPhoto] = useState<Blob | null>(null) // photo from the scanner, used when adding
   useCollection() // re-render when the collection changes
   const editItem = editId ? getItem(editId) : undefined
@@ -30,6 +32,7 @@ export default function App() {
       <header className="topbar">
         <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="logo" />
         <h1>Card Vault</h1>
+        <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Settings">⚙️</button>
       </header>
 
       <main className="content">
@@ -75,6 +78,7 @@ export default function App() {
         <ItemForm key={editItem.id} mode="edit" item={editItem} onClose={() => setEditId(null)} onViewCard={setOpenCardId} />
       )}
 
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )

@@ -424,3 +424,25 @@
 .suggested { color: var(--accent-soft); font-weight: 400; font-size: 0.8rem; }
 .grade-box { display: grid; gap: 4px; background: linear-gradient(135deg, #2b2f3a, #20232b); border-radius: 14px; padding: 16px; }
 .grade-box strong { font-size: 1.8rem; color: var(--gold); line-height: 1.1; }
+
+/* ---------- Settings + grading advice ---------- */
+.icon-btn { margin-left: auto; background: none; border: none; font-size: 1.3rem; padding: 6px; }
+.unit-input { display: flex; align-items: center; gap: 8px; }
+.unit-input em { font-style: normal; color: var(--muted); }
+.unit-input input { flex: 1; }
+
+.advice { display: grid; gap: 6px; border-radius: 14px; padding: 14px; background: var(--surface); border: 1px solid var(--surface-2); }
+.advice-worth { border-color: #2f6f3e; background: #1c2a21; }
+.advice-maybe { border-color: #6b5a1a; }
+.advice-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.advice-title { font-weight: 700; }
+.advice-worth .advice-title, .advice-worth .advice-gain { color: #7dd88a; }
+.advice-no .advice-gain { color: #ff8a80; }
+.advice-gain { font-weight: 700; white-space: nowrap; }
+.advice-text { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.advice-text b { color: var(--text); }
+.advice .link { justify-self: start; }
+.advice-prices { display: grid; gap: 8px; }
+.advice-prices .field a { font-weight: 500; }
+.grade-badge { color: #7dd88a; font-weight: 600; }
+.filter-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #1c2a21; border: 1px solid #2f6f3e; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.9rem; }

@@ -57,6 +57,7 @@ export interface CollectionItem {
   hasPhoto: boolean
   hasBackPhoto?: boolean
   grading?: Grading // result of the condition check, if done
+  gradedPrices?: Partial<Record<number, number>> // real PSA prices you looked up (€), by grade
   addedAt: string
   basePrice: number | null // Cardmarket 30-day average for this version (all conditions)
   priceUpdated?: string // when we last fetched it

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cardImage, formatEur } from './api'
 import { gradeRange } from './condition'
+import { adviseGrading, useGradingSettings } from './grading'
 import {
   conditionInfo,
   getPhoto,
@@ -19,6 +20,10 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
   const [filter, setFilter] = useState('')
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [onlyWorth, setOnlyWorth] = useState(false)
+  const settings = useGradingSettings()
+  const advice = useMemo(() => new Map(items.map((i) => [i.id, adviseGrading(i, settings)])), [items, settings])
+  const worthCount = useMemo(() => [...advice.values()].filter((a) => a.verdict === 'worth').length, [advice])
 
   const totals = useMemo(() => {
     let value = 0
@@ -40,12 +45,14 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
 
   const shown = useMemo(() => {
     const f = filter.trim().toLowerCase()
-    const list = f ? items.filter((i) => `${i.name} ${i.setName} ${i.number} ${i.notes}`.toLowerCase().includes(f)) : [...items]
+    let list = f ? items.filter((i) => `${i.name} ${i.setName} ${i.number} ${i.notes}`.toLowerCase().includes(f)) : [...items]
+    if (onlyWorth) list = list.filter((i) => advice.get(i.id)?.verdict === 'worth').sort((a, b) => (advice.get(b.id)?.gain ?? 0) - (advice.get(a.id)?.gain ?? 0))
+    if (onlyWorth) return list
     if (sort === 'value') list.sort((a, b) => (itemValue(b) ?? -1) - (itemValue(a) ?? -1))
     if (sort === 'recent') list.sort((a, b) => b.addedAt.localeCompare(a.addedAt))
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name))
     return list
-  }, [items, sort, filter])
+  }, [items, sort, filter, onlyWorth, advice])
 
   async function update() {
     setMessage(null)
@@ -81,6 +88,13 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
         {message && <span className="small">{message}</span>}
       </section>
 
+      {(worthCount > 0 || onlyWorth) && (
+        <div className="filter-banner">
+          <span>🏅 {onlyWorth ? `Showing ${worthCount} card${worthCount === 1 ? '' : 's'} worth grading, biggest gain first` : `${worthCount} card${worthCount === 1 ? ' is' : 's are'} worth grading`}</span>
+          <button className="btn secondary" onClick={() => setOnlyWorth(!onlyWorth)}>{onlyWorth ? 'Show all' : 'Show'}</button>
+        </div>
+      )}
+
       <div className="toolbar">
         <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter your cards" />
         <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort by">
@@ -103,6 +117,7 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
                 <span className="item-sub">
                   <span className={`cond cond-${it.condition}`}>{conditionInfo(it.condition).name}</span> {languageInfo(it.language).flag} {it.versionLabel}
                   {it.grading?.grade ? <> · est. {gradeRange(it.grading.grade)}</> : null}
+                  {advice.get(it.id)?.verdict === 'worth' && <span className="grade-badge"> · 🏅 grade it (+{formatEur(advice.get(it.id)!.gain)})</span>}
                 </span>
               </span>
               <span className="item-value">{formatEur(itemValue(it))}</span>
