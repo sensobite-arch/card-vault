@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cardImage, formatEur } from './api'
+import { gradeRange } from './condition'
 import {
   conditionInfo,
   getPhoto,
@@ -101,6 +102,7 @@ export default function CollectionPage({ onEdit, onGoSearch }: { onEdit: (id: st
                 <span className="item-sub">{it.setName} · {it.number}</span>
                 <span className="item-sub">
                   <span className={`cond cond-${it.condition}`}>{conditionInfo(it.condition).name}</span> {languageInfo(it.language).flag} {it.versionLabel}
+                  {it.grading?.grade ? <> · est. {gradeRange(it.grading.grade)}</> : null}
                 </span>
               </span>
               <span className="item-value">{formatEur(itemValue(it))}</span>

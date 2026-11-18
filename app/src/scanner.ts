@@ -143,8 +143,14 @@ export function nameScore(words: string[], cardName: string): number {
 
 export type Box = { x: number; y: number; w: number; h: number }
 
-/** Looks for the yellow border most Pokémon cards have. Returns null if not found. */
-export function findCardBox(image: HTMLCanvasElement): Box | null {
+/** "Yellow": red and green high, blue clearly lower (the front border). */
+export const isYellow = (r: number, g: number, b: number) => r > 140 && g > 110 && b < r * 0.6 && b < g * 0.7 && Math.abs(r - g) < 90
+
+/** "Blue": the border on the back of a Pokémon card. */
+export const isBlue = (r: number, g: number, b: number) => b > 70 && b > r * 1.5 && b > g * 1.15
+
+/** Looks for the coloured border of a card (yellow front by default). Returns null if not found. */
+export function findCardBox(image: HTMLCanvasElement, isBorder = isYellow): Box | null {
   const scale = Math.min(1, 320 / Math.max(image.width, image.height))
   const w = Math.round(image.width * scale)
   const h = Math.round(image.height * scale)
@@ -161,8 +167,7 @@ export function findCardBox(image: HTMLCanvasElement): Box | null {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4
       const r = px[i], g = px[i + 1], b = px[i + 2]
-      // "Yellow": red and green high, blue clearly lower.
-      if (r > 140 && g > 110 && b < r * 0.6 && b < g * 0.7 && Math.abs(r - g) < 90) {
+      if (isBorder(r, g, b)) {
         rows[y]++
         cols[x]++
         total++

@@ -1,6 +1,6 @@
 // Add a card to the collection, or edit/delete a saved one.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { cardImage, formatEur, getCard, type CardDetail } from './api'
 import {
   CONDITIONS,
@@ -8,16 +8,20 @@ import {
   compressPhoto,
   conditionInfo,
   deleteItem,
+  getBackPhoto,
   getPhoto,
   newId,
   numberOf,
   priceForVersion,
   saveItem,
+  setBackPhoto,
   type CollectionItem,
   type Condition,
   type Language,
 } from './collection'
 import Sheet from './Sheet'
+import ConditionCheck from './ConditionCheck'
+import { gradeRange, ratioText, type Grading } from './condition'
 
 type Props =
   | { mode: 'new'; card: CardDetail; initialPhoto?: Blob | null; onClose: () => void; onSaved?: () => void }
@@ -38,6 +42,15 @@ export default function ItemForm(props: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [grading, setGrading] = useState<Grading | undefined>(existing?.grading)
+  const [backPhoto, setBackPhotoState] = useState<Blob | null | undefined>(undefined) // undefined = unchanged
+  const [checking, setChecking] = useState<{ front: Blob | null; back: Blob | null } | null>(null)
+  const photoBlobRef = useRef<Blob | null>(null) // the photo currently shown
+
+  async function openCheck() {
+    const back = backPhoto !== undefined ? backPhoto : existing?.hasBackPhoto ? (await getBackPhoto(existing.id)) ?? null : null
+    setChecking({ front: photoBlobRef.current, back })
+  }
 
   // When editing, load the card's versions and today's prices.
   useEffect(() => {
@@ -51,6 +64,7 @@ export default function ItemForm(props: Props) {
     let cancelled = false
     const show = (b: Blob | undefined | null) => {
       if (cancelled) return
+      photoBlobRef.current = b ?? null
       url = b ? URL.createObjectURL(b) : null
       setPhotoUrl(url)
     }
@@ -104,10 +118,13 @@ export default function ItemForm(props: Props) {
         quantity: Math.max(1, quantity || 1),
         notes: notes.trim(),
         hasPhoto: existing?.hasPhoto ?? false,
+        hasBackPhoto: backPhoto !== undefined ? !!backPhoto : existing?.hasBackPhoto,
+        grading,
         addedAt: existing?.addedAt ?? new Date().toISOString(),
         basePrice,
         priceUpdated: card ? new Date().toISOString() : existing?.priceUpdated,
       }
+      if (backPhoto !== undefined) await setBackPhoto(item.id, backPhoto)
       await saveItem(item, photo)
       props.onClose()
       if (props.mode === 'new') props.onSaved?.()
@@ -124,6 +141,7 @@ export default function ItemForm(props: Props) {
   }
 
   return (
+    <>
     <Sheet onClose={props.onClose} title={existing ? 'Edit card' : 'Add to collection'}>
       <div className="form">
         <div className="form-card">
@@ -157,6 +175,17 @@ export default function ItemForm(props: Props) {
             ))}
           </div>
           <small>{conditionInfo(condition).help}</small>
+          <div className="check-summary">
+            {grading?.grade ? (
+              <span>
+                Estimate: <b>{gradeRange(grading.grade)}</b>
+                {grading.front && <> · centering {ratioText(grading.front.lr)}</>}
+              </span>
+            ) : (
+              <span className="small">Not sure? Let the app check centering and wear from photos.</span>
+            )}
+            <button className="btn secondary" onClick={openCheck}>🔍 {grading ? 'Check again' : 'Check condition'}</button>
+          </div>
         </div>
 
         <div className="field">
@@ -228,6 +257,22 @@ export default function ItemForm(props: Props) {
           ))}
       </div>
     </Sheet>
+    {checking && (
+      <ConditionCheck
+        front={checking.front}
+        back={checking.back}
+        initial={grading}
+        onClose={() => setChecking(null)}
+        onDone={(g, f, b) => {
+          setGrading(g)
+          if (g.suggested) setCondition(g.suggested)
+          if (f !== checking.front) setPhoto(f)
+          if (b !== checking.back) setBackPhotoState(b)
+          setChecking(null)
+        }}
+      />
+    )}
+    </>
   )
 }
 

@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from 'react'
 import { createStore, del, get, set } from 'idb-keyval'
 import { getCard, mainPrice, type CardDetail } from './api'
+import type { Grading } from './condition'
 
 const db = createStore('card-vault', 'data')
 
@@ -54,6 +55,8 @@ export interface CollectionItem {
   quantity: number
   notes: string
   hasPhoto: boolean
+  hasBackPhoto?: boolean
+  grading?: Grading // result of the condition check, if done
   addedAt: string
   basePrice: number | null // Cardmarket 30-day average for this version (all conditions)
   priceUpdated?: string // when we last fetched it
@@ -121,10 +124,17 @@ export async function saveItem(item: CollectionItem, photo?: Blob | null) {
 export async function deleteItem(id: string) {
   items = items.filter((x) => x.id !== id)
   emit()
-  await Promise.all([persist(), del(`photo:${id}`, db)])
+  await Promise.all([persist(), del(`photo:${id}`, db), del(`photoBack:${id}`, db)])
 }
 
 export const getPhoto = (id: string) => get<Blob>(`photo:${id}`, db)
+export const getBackPhoto = (id: string) => get<Blob>(`photoBack:${id}`, db)
+
+/** Saves (blob) or removes (null) the photo of the back of a card. */
+export async function setBackPhoto(id: string, blob: Blob | null) {
+  if (blob) await set(`photoBack:${id}`, blob, db)
+  else await del(`photoBack:${id}`, db)
+}
 
 export const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
